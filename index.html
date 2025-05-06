@@ -3,79 +3,243 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>币种行情</title>
+  <title>币种行情中心</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
+    :root {
+      --bg: #f9f9fb;
+      --text: #222;
+      --card: white;
+      --label: #666;
+    }
+
+    body.dark {
+      --bg: #121212;
+      --text: #f0f0f0;
+      --card: #1f1f1f;
+      --label: #aaa;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
     body {
-      font-family: Arial, sans-serif;
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
       padding: 20px;
     }
+
     h1 {
       text-align: center;
+      margin-bottom: 20px;
+      font-weight: 600;
     }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 20px;
+
+    .controls {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
     }
-    th, td {
-      padding: 12px;
-      border-bottom: 1px solid #ccc;
-      text-align: center;
+
+    .controls input {
+      padding: 10px;
+      font-size: 16px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      min-width: 240px;
     }
-    th {
-      background-color: #f2f2f2;
+
+    .controls button {
+      padding: 10px 15px;
+      font-size: 14px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      background: #333;
+      color: white;
     }
+
+    .container {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 20px;
+    }
+
+    .card {
+      background: var(--card);
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+      transition: transform 0.2s ease;
+    }
+
+    .card:hover {
+      transform: translateY(-5px);
+    }
+
+    .coin-header {
+      display: flex;
+      align-items: center;
+      margin-bottom: 15px;
+    }
+
+    .coin-header img {
+      width: 28px;
+      height: 28px;
+      margin-right: 12px;
+    }
+
+    .coin-header span {
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .coin-info {
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .label {
+      font-weight: 500;
+      color: var(--label);
+    }
+
+    .green {
+      color: #00a676;
+    }
+
+    .red {
+      color: #e24c4b;
+    }
+
     .loading {
       text-align: center;
-      margin-top: 50px;
       font-size: 18px;
+      padding: 60px 0;
       color: #888;
+    }
+
+    canvas {
+      width: 100% !important;
+      height: 50px !important;
+      margin-top: 10px;
     }
   </style>
 </head>
 <body>
   <h1>实时币种行情</h1>
-  <div id="content" class="loading">加载中...</div>
+  <div class="controls">
+    <input type="text" id="search" placeholder="🔍 搜索币种名称或代码..." />
+    <button id="toggleTheme">🌙 暗色模式</button>
+  </div>
+  <div id="content" class="loading">正在加载中...</div>
 
   <script>
+    let coinData = [];
+
+    const toggleBtn = document.getElementById("toggleTheme");
+    toggleBtn.addEventListener("click", () => {
+      document.body.classList.toggle("dark");
+      localStorage.setItem("theme", document.body.classList.contains("dark") ? "dark" : "light");
+    });
+
+    if (localStorage.getItem("theme") === "dark") {
+      document.body.classList.add("dark");
+    }
+
+    document.getElementById("search").addEventListener("input", function () {
+      const keyword = this.value.toLowerCase();
+      const filtered = coinData.filter(coin =>
+        coin.name.toLowerCase().includes(keyword) ||
+        coin.symbol.toLowerCase().includes(keyword)
+      );
+      renderCards(filtered);
+    });
+
     async function fetchData() {
       try {
-        const res = await fetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=20&page=1&sparkline=false');
+        const res = await fetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=50&page=1&sparkline=false');
         const data = await res.json();
 
-        const table = document.createElement('table');
-        table.innerHTML = `
-          <thead>
-            <tr>
-              <th>名称</th>
-              <th>符号</th>
-              <th>当前价格（$）</th>
-              <th>市值</th>
-              <th>24小时涨跌幅</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${data.map(coin => `
-              <tr>
-                <td><img src="${coin.image}" alt="" width="20" style="vertical-align: middle; margin-right: 8px;"> ${coin.name}</td>
-                <td>${coin.symbol.toUpperCase()}</td>
-                <td>${coin.current_price.toLocaleString()}</td>
-                <td>${coin.market_cap.toLocaleString()}</td>
-                <td style="color: ${coin.price_change_percentage_24h >= 0 ? 'green' : 'red'};">
-                  ${coin.price_change_percentage_24h.toFixed(2)}%
-                </td>
-              </tr>
-            `).join('')}
-          </tbody>
-        `;
-        document.getElementById('content').innerHTML = '';
-        document.getElementById('content').appendChild(table);
+        // 追加 sparkline 数据
+        const ids = data.map(c => c.id).join(',');
+        const chartsRes = await fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids}&sparkline=true`);
+        const chartData = await chartsRes.json();
+
+        coinData = chartData;
+        renderCards(chartData);
       } catch (err) {
-        document.getElementById('content').innerText = '加载失败，请稍后重试';
+        document.getElementById('content').innerText = '加载失败，请稍后重试。';
       }
     }
 
+    function renderCards(data) {
+      const container = document.createElement('div');
+      container.className = 'container';
+
+      data.forEach((coin, i) => {
+        const card = document.createElement('div');
+        card.className = 'card';
+        const chartId = `chart-${i}`;
+        card.innerHTML = `
+          <div class="coin-header">
+            <img src="${coin.image}" alt="${coin.name}" />
+            <span>${coin.name} (${coin.symbol.toUpperCase()})</span>
+          </div>
+          <div class="coin-info">
+            <div><span class="label">当前价格：</span>$${coin.current_price.toLocaleString()}</div>
+            <div><span class="label">市值：</span>$${coin.market_cap.toLocaleString()}</div>
+            <div><span class="label">24小时涨跌幅：</span>
+              <span class="${coin.price_change_percentage_24h >= 0 ? 'green' : 'red'}">
+                ${coin.price_change_percentage_24h?.toFixed(2)}%
+              </span>
+            </div>
+            <canvas id="${chartId}"></canvas>
+          </div>
+        `;
+        container.appendChild(card);
+
+        // 渲染图表
+        setTimeout(() => {
+          const ctx = document.getElementById(chartId).getContext('2d');
+          new Chart(ctx, {
+            type: 'line',
+            data: {
+              labels: coin.sparkline_in_7d.price.map((_, i) => i),
+              datasets: [{
+                data: coin.sparkline_in_7d.price,
+                borderColor: '#2f80ed',
+                borderWidth: 1,
+                pointRadius: 0,
+                fill: false,
+                tension: 0.3
+              }]
+            },
+            options: {
+              plugins: { legend: { display: false } },
+              scales: { x: { display: false }, y: { display: false } },
+              elements: { line: { borderJoinStyle: 'round' } },
+              responsive: true,
+              maintainAspectRatio: false
+            }
+          });
+        }, 50);
+      });
+
+      const content = document.getElementById('content');
+      content.innerHTML = '';
+      content.appendChild(container);
+    }
+
     fetchData();
+    setInterval(fetchData, 30000); // 每30秒刷新一次
   </script>
 </body>
 </html>
